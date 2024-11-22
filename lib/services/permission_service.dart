@@ -1,43 +1,77 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class PermissionService extends ChangeNotifier {
   Future<bool> checkAndRequestPermissions(BuildContext context) async {
-    List<Permission> permissions = [];
-    
-    if (Platform.isAndroid) {
-      permissions = [
-        Permission.bluetooth,
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.location,
-      ];
-    } else if (Platform.isIOS) {
-      permissions = [
-        Permission.bluetooth,
-        Permission.location,
-      ];
-    }
-
-    // Check current permission status
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-    
-    bool allGranted = true;
-    List<Permission> deniedPermissions = [];
-    
-    statuses.forEach((permission, status) {
-      if (!status.isGranted) {
-        allGranted = false;
-        deniedPermissions.add(permission);
+    try {
+      // First check if Bluetooth is turned on
+      if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+        // Show dialog to enable Bluetooth
+        bool shouldContinue = await _showBluetoothDialog(context);
+        if (!shouldContinue) return false;
+        
+        // Wait for Bluetooth to be turned on
+        await FlutterBluePlus.turnOn();
       }
-    });
 
-    if (!allGranted) {
-      return await _showPermissionDialog(context, deniedPermissions);
+      List<Permission> permissions = [];
+      
+      if (Platform.isAndroid) {
+        permissions = [
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+          Permission.bluetoothAdvertise,
+          Permission.location,
+        ];
+      } else if (Platform.isIOS) {
+        permissions = [
+          Permission.bluetooth,
+          Permission.location,
+        ];
+      }
+
+      // Request each permission individually
+      for (Permission permission in permissions) {
+        PermissionStatus status = await permission.status;
+        
+        if (status.isDenied) {
+          status = await permission.request();
+          if (!status.isGranted) {
+            // Show permission dialog for this specific permission
+            bool shouldContinue = await _showPermissionDialog(context, [permission]);
+            if (!shouldContinue) return false;
+          }
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error checking permissions: $e');
+      return false;
     }
+  }
 
-    return true;
+  Future<bool> _showBluetoothDialog(BuildContext context) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Bluetooth Required'),
+        content: const Text('Please enable Bluetooth to scan for devices.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Enable Bluetooth'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   String _getPermissionText(Permission permission) {
@@ -48,6 +82,8 @@ class PermissionService extends ChangeNotifier {
         return 'Bluetooth Scanning';
       case Permission.bluetoothConnect:
         return 'Bluetooth Connection';
+      case Permission.bluetoothAdvertise:
+        return 'Bluetooth Advertising';
       case Permission.location:
         return 'Location';
       default:

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:gsatrancher/services/permission_service.dart';
+import '../constants/ble_uuids.dart';
 
 class BleService extends ChangeNotifier {
   final List<ScanResult> _devices = [];
@@ -58,41 +59,38 @@ class BleService extends ChangeNotifier {
         return;
       }
 
-      // Check if Bluetooth is on
-      if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
-        debugPrint('Bluetooth is turned off');
-        return;
-      }
+      // Create scan filters for Nordic UART and DFU services
+      List<Guid> serviceUuids = [
+        Guid(BleUUIDs.NORDIC_UART_SERVICE_UUID),
+        Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
+      ];
 
-      // Start scanning
-      debugPrint('Starting BLE scan...');
-      _isScanning = true;
-      notifyListeners();
-
-      // Listen to scan results
-      _scanSubscription = FlutterBluePlus.scanResults.listen(
-        (results) {
-          for (ScanResult result in results) {
-            if (!_devices.contains(result)) {
-              _devices.add(result);
-              debugPrint('Found device: ${result.device.remoteId}');
-              notifyListeners();
-            }
-          }
-        },
-        onError: (error) {
-          debugPrint('Error during scan: $error');
-          stopScan();
-        },
-      );
-
-      // Start scanning
+      // Start scanning with filters
       await FlutterBluePlus.startScan(
+        withServices: serviceUuids,
         timeout: const Duration(seconds: 4),
         androidUsesFineLocation: true,
       );
+
+      // Listen to scan results
+      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+        for (ScanResult r in results) {
+          // Only add devices that haven't been discovered yet
+          if (!_devices.any((device) => device.device.remoteId == r.device.remoteId)) {
+            _devices.add(r);
+            notifyListeners();
+          }
+        }
+      }, onError: (e) {
+        debugPrint('Error during BLE scan: $e');
+        stopScan();
+      });
+
+      _isScanning = true;
+      notifyListeners();
+
     } catch (e) {
-      debugPrint('Error starting scan: $e');
+      debugPrint('Error starting BLE scan: $e');
       _isScanning = false;
       notifyListeners();
     }
