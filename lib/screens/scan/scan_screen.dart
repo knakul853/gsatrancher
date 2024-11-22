@@ -48,7 +48,8 @@ class _ScanScreenState extends State<ScanScreen> {
             appBar: AppBar(
               backgroundColor: AppColors.primary600,
               leading: IconButton(
-                icon: Icon(Icons.arrow_back, color: AppColors.lightHighEmphasis),
+                icon:
+                    Icon(Icons.arrow_back, color: AppColors.lightHighEmphasis),
                 onPressed: () async {
                   await bleService.stopScan();
                   if (mounted) {
@@ -60,7 +61,7 @@ class _ScanScreenState extends State<ScanScreen> {
               actions: [
                 StatusIndicators(
                   isBluetoothEnabled: true, // TODO: Get actual state
-                  isLocationEnabled: true,  // TODO: Get actual state
+                  isLocationEnabled: true, // TODO: Get actual state
                 ),
                 const SizedBox(width: 16),
               ],
@@ -120,7 +121,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 // Device List or Loading Message
                 Expanded(
-                  child: _buildDeviceList(bleService.devices, bleService.isScanning),
+                  child: _buildDeviceList(
+                      bleService.devices, bleService.isScanning),
                 ),
               ],
             ),

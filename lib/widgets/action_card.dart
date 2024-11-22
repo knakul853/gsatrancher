@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 
-class DeviceCard extends StatelessWidget {
+class ActionCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
   final bool isEnabled;
 
-  const DeviceCard({
+  const ActionCard({
     Key? key,
     required this.title,
     required this.icon,
@@ -35,9 +35,7 @@ class DeviceCard extends StatelessWidget {
                 Icon(
                   icon,
                   size: 48,
-                  color: isEnabled
-                      ? AppColors.primary500
-                      : AppColors.lightBackdropMid,
+                  color: isEnabled ? AppColors.primary500 : AppColors.lightBackdropMid,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -45,9 +43,7 @@ class DeviceCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
-                    color: isEnabled
-                        ? AppColors.secondary700
-                        : AppColors.lightBackdropMid,
+                    color: isEnabled ? AppColors.secondary700 : AppColors.lightBackdropMid,
                     fontWeight: FontWeight.w500,
                   ),
                 ),

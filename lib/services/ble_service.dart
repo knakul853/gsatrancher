@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:gsatrancher/services/permission_service.dart';
 import '../constants/ble_uuids.dart';
+import '../models/device_advertising_data.dart';
 
 class BleService extends ChangeNotifier {
   final List<ScanResult> _devices = [];
@@ -20,11 +21,13 @@ class BleService extends ChangeNotifier {
   void _checkEmulator() {
     // Check if running on emulator
     if (Platform.isAndroid) {
-      String androidModel = const String.fromEnvironment('ANDROID_MODEL', defaultValue: '');
+      String androidModel =
+          const String.fromEnvironment('ANDROID_MODEL', defaultValue: '');
       _isEmulator = androidModel.toLowerCase().contains('sdk') ||
-                    androidModel.toLowerCase().contains('emulator');
+          androidModel.toLowerCase().contains('emulator');
     } else if (Platform.isIOS) {
-      String iosModel = const String.fromEnvironment('SIMULATOR_DEVICE_NAME', defaultValue: '');
+      String iosModel = const String.fromEnvironment('SIMULATOR_DEVICE_NAME',
+          defaultValue: '');
       _isEmulator = iosModel.isNotEmpty;
     }
   }
@@ -37,7 +40,7 @@ class BleService extends ChangeNotifier {
 
     // Clear previous results
     _devices.clear();
-    
+
     try {
       // If running in emulator, simulate devices for testing
       if (_isEmulator) {
@@ -46,8 +49,9 @@ class BleService extends ChangeNotifier {
       }
 
       // Check permissions first
-      bool permissionsGranted = await _permissionService.checkAndRequestPermissions(context);
-      
+      bool permissionsGranted =
+          await _permissionService.checkAndRequestPermissions(context);
+
       if (!permissionsGranted) {
         debugPrint('BLE permissions not granted');
         return;
@@ -75,11 +79,7 @@ class BleService extends ChangeNotifier {
       // Listen to scan results
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (ScanResult r in results) {
-          // Only add devices that haven't been discovered yet
-          if (!_devices.any((device) => device.device.remoteId == r.device.remoteId)) {
-            _devices.add(r);
-            notifyListeners();
-          }
+          _handleScanResult(r);
         }
       }, onError: (e) {
         debugPrint('Error during BLE scan: $e');
@@ -88,7 +88,6 @@ class BleService extends ChangeNotifier {
 
       _isScanning = true;
       notifyListeners();
-
     } catch (e) {
       debugPrint('Error starting BLE scan: $e');
       _isScanning = false;
@@ -119,7 +118,7 @@ class BleService extends ChangeNotifier {
 
   void _addSimulatedDevice(String name, int rssi) {
     final deviceId = name.replaceAll(' ', '_').toLowerCase();
-    
+
     final advData = AdvertisementData(
       advName: name,
       txPowerLevel: -59,
@@ -160,13 +159,37 @@ class BleService extends ChangeNotifier {
 
   Future<bool> isBluetoothOn() async {
     if (_isEmulator) return true;
-    
+
     try {
       final state = await FlutterBluePlus.adapterState.first;
       return state == BluetoothAdapterState.on;
     } catch (e) {
       debugPrint('Error checking Bluetooth state: $e');
       return false;
+    }
+  }
+
+  DeviceAdvertisingData? getParsedManufacturingData(ScanResult scanResult) {
+    final manufacturerData = scanResult.advertisementData.manufacturerData;
+    if (manufacturerData.isEmpty) return null;
+
+    // Check for manufacturer ID 0x576 (1398 in decimal)
+    final data = manufacturerData[1398];
+    if (data == null) return null;
+
+    return DeviceAdvertisingData.fromManufacturerData(data);
+  }
+
+  void _handleScanResult(ScanResult r) {
+    // Only add devices that haven't been discovered yet
+    if (!_devices
+        .any((device) => device.device.remoteId == r.device.remoteId)) {
+      // Parse manufacturing data
+      final manufacturingData = getParsedManufacturingData(r);
+      if (manufacturingData != null) {
+        _devices.add(r);
+        notifyListeners();
+      }
     }
   }
 
