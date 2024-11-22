@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/home/home_screen.dart';
 import 'services/device_service.dart';
+import 'services/ble_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -12,8 +13,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DeviceService(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => DeviceService()),
+        ChangeNotifierProvider(create: (_) => BleService()),
+      ],
       child: MaterialApp(
         title: 'GSA Trancher',
         theme: ThemeData(

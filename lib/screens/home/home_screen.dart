@@ -4,6 +4,7 @@ import '../../widgets/device_card.dart';
 import '../../widgets/status_indicators.dart';
 import '../../services/device_service.dart';
 import 'package:provider/provider.dart';
+import '../scan/scan_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -73,7 +74,10 @@ class HomeScreen extends StatelessWidget {
           title: 'Connect to Device',
           icon: Icons.bluetooth_searching,
           onTap: () {
-            // TODO: Implement connect to device
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ScanScreen()),
+            );
           },
         ),
         DeviceCard(
