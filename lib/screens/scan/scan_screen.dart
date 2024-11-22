@@ -23,7 +23,7 @@ class _ScanScreenState extends State<ScanScreen> {
     // Start scanning when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _bleService.startScan();
+        _bleService.startScan(context);
       }
     });
   }

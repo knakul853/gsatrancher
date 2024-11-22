@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:gsatrancher/services/permission_service.dart';
 
 class BleService extends ChangeNotifier {
   final List<ScanResult> _devices = [];
   bool _isScanning = false;
   StreamSubscription? _scanSubscription;
   bool _isEmulator = false;
+  final PermissionService _permissionService = PermissionService();
 
   BleService() {
     _checkEmulator();
@@ -29,7 +31,7 @@ class BleService extends ChangeNotifier {
   List<ScanResult> get devices => _devices;
   bool get isScanning => _isScanning;
 
-  Future<void> startScan() async {
+  Future<void> startScan(BuildContext context) async {
     if (_isScanning) return;
 
     // Clear previous results
@@ -39,6 +41,14 @@ class BleService extends ChangeNotifier {
       // If running in emulator, simulate devices for testing
       if (_isEmulator) {
         _simulateDevices();
+        return;
+      }
+
+      // Check permissions first
+      bool permissionsGranted = await _permissionService.checkAndRequestPermissions(context);
+      
+      if (!permissionsGranted) {
+        debugPrint('BLE permissions not granted');
         return;
       }
 
