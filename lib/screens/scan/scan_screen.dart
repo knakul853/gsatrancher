@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/status_indicators.dart';
 import '../../services/ble_service.dart';
+import '../../widgets/device_list_item.dart';
+import '../../models/device_advertising_data.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({Key? key}) : super(key: key);
@@ -121,8 +123,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 // Device List or Loading Message
                 Expanded(
-                  child: _buildDeviceList(
-                      bleService.devices, bleService.isScanning),
+                  child: _buildDeviceList(bleService.devices, bleService.isScanning),
                 ),
               ],
             ),
@@ -168,14 +169,14 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Widget _buildDeviceList(List<ScanResult> devices, bool isScanning) {
     if (isScanning && devices.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
             Text(
-              'Scanning for devices...',
+              'Searching for devices...',
               style: TextStyle(
                 color: AppColors.secondary700,
                 fontSize: 16,
@@ -186,8 +187,8 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     }
 
-    if (devices.isEmpty) {
-      return Center(
+    if (!isScanning && devices.isEmpty) {
+      return const Center(
         child: Text(
           'No devices found',
           style: TextStyle(
@@ -201,43 +202,41 @@ class _ScanScreenState extends State<ScanScreen> {
     return ListView.builder(
       itemCount: devices.length,
       itemBuilder: (context, index) {
-        final device = devices[index];
-        final deviceName = device.advertisementData.advName.isNotEmpty
-            ? device.advertisementData.advName
-            : 'Unknown Device';
+        final scanResult = devices[index];
+        final deviceName = scanResult.advertisementData.advName.isNotEmpty
+            ? scanResult.advertisementData.advName
+            : scanResult.device.remoteId.toString();
 
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: AppColors.lightHighEmphasis,
-          child: ListTile(
-            leading: Icon(
-              Icons.bluetooth,
-              color: AppColors.primary600,
-            ),
-            title: Text(
-              deviceName,
-              style: TextStyle(
-                color: AppColors.secondary700,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Text(
-              'Signal Strength: ${device.rssi} dBm',
-              style: TextStyle(
-                color: AppColors.secondary200,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: AppColors.primary600,
-            ),
-            onTap: () {
-              // TODO: Implement device selection
-              debugPrint('Selected device: $deviceName');
-            },
-          ),
+        // Get manufacturing data if available
+        final manufacturingData = Provider.of<BleService>(context, listen: false)
+            .getParsedManufacturingData(scanResult);
+
+        // Convert RSSI to signal strength percentage
+        final signalStrength = _calculateSignalStrength(scanResult.rssi);
+
+        return DeviceListItem(
+          deviceName: deviceName,
+          version: manufacturingData?.version?.formattedVersion ?? 'v0.0.0',
+          hasUpdate: false, // TODO: Implement version check
+          batteryLevel: manufacturingData?.stateOfCharge ?? 0,
+          signalStrength: signalStrength,
+          onTap: () {
+            debugPrint('Selected device: $deviceName');
+            // TODO: Handle device selection
+          },
         );
       },
     );
+  }
+
+  int _calculateSignalStrength(int rssi) {
+    // Convert RSSI to percentage (typical RSSI range: -100 dBm to -50 dBm)
+    const int maxRssi = -50;
+    const int minRssi = -100;
+
+    if (rssi >= maxRssi) return 100;
+    if (rssi <= minRssi) return 0;
+
+    return ((rssi - minRssi) * 100 ~/ (maxRssi - minRssi)).clamp(0, 100);
   }
 }

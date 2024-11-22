@@ -11,11 +11,43 @@ class BleService extends ChangeNotifier {
   final List<ScanResult> _devices = [];
   bool _isScanning = false;
   StreamSubscription? _scanSubscription;
+  Timer? _updateTimer;
   bool _isEmulator = false;
   final PermissionService _permissionService = PermissionService();
+  final List<ScanResult> _pendingUpdates = [];
+  bool _hasUpdates = false;
 
   BleService() {
     _checkEmulator();
+    _startUpdateTimer();
+  }
+
+  void _startUpdateTimer() {
+    _updateTimer?.cancel();
+    _updateTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_hasUpdates) {
+        _applyPendingUpdates();
+      }
+    });
+  }
+
+  void _applyPendingUpdates() {
+    if (_pendingUpdates.isEmpty) return;
+
+    for (var update in _pendingUpdates) {
+      final index = _devices.indexWhere(
+          (device) => device.device.remoteId == update.device.remoteId);
+      
+      if (index != -1) {
+        _devices[index] = update;
+      } else {
+        _devices.add(update);
+      }
+    }
+
+    _pendingUpdates.clear();
+    _hasUpdates = false;
+    notifyListeners();
   }
 
   void _checkEmulator() {
@@ -32,7 +64,7 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  List<ScanResult> get devices => _devices;
+  List<ScanResult> get devices => List.unmodifiable(_devices);
   bool get isScanning => _isScanning;
 
   Future<void> startScan(BuildContext context) async {
@@ -40,6 +72,8 @@ class BleService extends ChangeNotifier {
 
     // Clear previous results
     _devices.clear();
+    _pendingUpdates.clear();
+    _hasUpdates = false;
 
     try {
       // If running in emulator, simulate devices for testing
@@ -72,9 +106,23 @@ class BleService extends ChangeNotifier {
       // Start scanning with filters
       await FlutterBluePlus.startScan(
         withServices: serviceUuids,
-        timeout: const Duration(seconds: 4),
-        androidUsesFineLocation: true,
       );
+
+      // Set up periodic scanning to simulate continuous updates
+      Timer.periodic(const Duration(seconds: 4), (timer) async {
+        if (!_isScanning) {
+          timer.cancel();
+          return;
+        }
+        
+        try {
+          await FlutterBluePlus.startScan(
+            withServices: serviceUuids,
+          );
+        } catch (e) {
+          debugPrint('Error during periodic scan: $e');
+        }
+      });
 
       // Listen to scan results
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
@@ -107,10 +155,15 @@ class BleService extends ChangeNotifier {
 
     Timer(const Duration(seconds: 2), () {
       _addSimulatedDevice('GSA Device 2', -72);
+      // Simulate update to first device
+      _addSimulatedDevice('GSA Device 1', -62);
     });
 
     Timer(const Duration(seconds: 3), () {
       _addSimulatedDevice('GSA Device 3', -58);
+      // Simulate more updates
+      _addSimulatedDevice('GSA Device 1', -67);
+      _addSimulatedDevice('GSA Device 2', -75);
       _isScanning = false;
       notifyListeners();
     });
@@ -123,7 +176,14 @@ class BleService extends ChangeNotifier {
       advName: name,
       txPowerLevel: -59,
       connectable: true,
-      manufacturerData: {},
+      manufacturerData: {
+        1398: Uint8List.fromList([
+          0x01, // Version
+          0x64, // Battery level (100%)
+          0x00, // State
+          0x00, // Config version
+        ])
+      },
       serviceData: {},
       serviceUuids: [],
       appearance: 0,
@@ -136,8 +196,7 @@ class BleService extends ChangeNotifier {
       advertisementData: advData,
     );
 
-    _devices.add(result);
-    notifyListeners();
+    _handleScanResult(result);
   }
 
   Future<void> stopScan() async {
@@ -151,6 +210,10 @@ class BleService extends ChangeNotifier {
       await _scanSubscription?.cancel();
       _scanSubscription = null;
       _isScanning = false;
+      
+      // Apply any remaining updates
+      _applyPendingUpdates();
+      
       notifyListeners();
     } catch (e) {
       debugPrint('Error stopping scan: $e');
@@ -181,21 +244,27 @@ class BleService extends ChangeNotifier {
   }
 
   void _handleScanResult(ScanResult r) {
-    // Only add devices that haven't been discovered yet
-    if (!_devices
-        .any((device) => device.device.remoteId == r.device.remoteId)) {
-      // Parse manufacturing data
-      final manufacturingData = getParsedManufacturingData(r);
-      if (manufacturingData != null) {
-        _devices.add(r);
-        notifyListeners();
-      }
+    // Parse manufacturing data
+    final manufacturingData = getParsedManufacturingData(r);
+    if (manufacturingData == null) return;
+
+    // Add to pending updates
+    final existingUpdateIndex = _pendingUpdates
+        .indexWhere((update) => update.device.remoteId == r.device.remoteId);
+    
+    if (existingUpdateIndex != -1) {
+      _pendingUpdates[existingUpdateIndex] = r;
+    } else {
+      _pendingUpdates.add(r);
     }
+    
+    _hasUpdates = true;
   }
 
   @override
   void dispose() {
     stopScan();
+    _updateTimer?.cancel();
     super.dispose();
   }
 }

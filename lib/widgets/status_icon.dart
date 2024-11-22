@@ -4,13 +4,11 @@ import '../constants/app_colors.dart';
 class StatusIcon extends StatelessWidget {
   final IconData icon;
   final double size;
-  final Color color;
 
   const StatusIcon({
     Key? key,
     required this.icon,
     this.size = 24,
-    this.color = AppColors.secondary700,
   }) : super(key: key);
 
   static Widget battery(int level, {double size = 24}) {
@@ -50,7 +48,6 @@ class StatusIcon extends StatelessWidget {
     return Icon(
       icon,
       size: size,
-      color: color,
     );
   }
 }
