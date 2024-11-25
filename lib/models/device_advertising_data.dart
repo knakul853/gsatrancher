@@ -1,3 +1,5 @@
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
 class Version {
   final int major;
   final int minor;
@@ -26,16 +28,18 @@ class DeviceAdvertisingData {
   final double? voltage;
   final int? stateOfCharge;
   final int? configVersion;
+  final String deviceName;
 
   DeviceAdvertisingData({
     this.version,
     this.voltage,
     this.stateOfCharge,
     this.configVersion,
+    required this.deviceName,
   });
 
-  factory DeviceAdvertisingData.fromManufacturerData(List<int>? data) {
-    if (data == null || data.isEmpty) return DeviceAdvertisingData();
+  factory DeviceAdvertisingData.fromManufacturerData(List<int>? data, {required String deviceName}) {
+    if (data == null || data.isEmpty) return DeviceAdvertisingData(deviceName: deviceName);
 
     Version? version;
     double? voltage;
@@ -50,19 +54,20 @@ class DeviceAdvertisingData {
       version = Version(major: major, minor: minor, patch: patch);
     }
 
-    // Parse voltage (bytes 3-4)
-    if (data.length >= 5) {
-      final voltageData = data.sublist(3, 5);
-      final voltReading = (voltageData[0] | (voltageData[1] << 8));
-      voltage = (voltReading * 0.078) / 1000;
+    // Parse voltage (next 2 bytes)
+    if (data.length > 4) {
+      final voltageRaw = ((data[3] & 0xFF) << 8) | (data[4] & 0xFF);
+      voltage = voltageRaw / 1000.0; // Convert millivolts to volts
     }
 
-    // Parse state of charge and config version (bytes 5-7)
-    if (data.length >= 8) {
-      stateOfCharge = data[5];
-      final configVersion1 = data[6];
-      final configVersion2 = data[7];
-      configVersion = int.parse('$configVersion1$configVersion2', radix: 16);
+    // Parse state of charge (next byte)
+    if (data.length > 5) {
+      stateOfCharge = data[5] & 0xFF;
+    }
+
+    // Parse config version (next byte)
+    if (data.length > 6) {
+      configVersion = data[6] & 0xFF;
     }
 
     return DeviceAdvertisingData(
@@ -70,6 +75,24 @@ class DeviceAdvertisingData {
       voltage: voltage,
       stateOfCharge: stateOfCharge,
       configVersion: configVersion,
+      deviceName: deviceName,
+    );
+  }
+
+  factory DeviceAdvertisingData.fromScanResult(ScanResult result) {
+    final manufacturerData = result.advertisementData.manufacturerData;
+    final deviceName = result.device.platformName.isNotEmpty 
+        ? result.device.platformName 
+        : result.advertisementData.localName.isNotEmpty
+            ? result.advertisementData.localName
+            : 'Unknown Device';
+
+    // Check for manufacturer ID 0x576 (1398 in decimal)
+    final data = manufacturerData[1398];
+    
+    return DeviceAdvertisingData.fromManufacturerData(
+      data,
+      deviceName: deviceName,
     );
   }
 }

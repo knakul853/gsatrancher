@@ -30,12 +30,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
-  provider: ^6.1.2
+  cupertino_icons: ^1.0.2
+  provider: ^6.1.1
   flutter_blue_plus: ^1.31.8
-  permission_handler: ^11.3.0
+  permission_handler: ^11.0.1
   lottie: ^3.1.0
   flutter_svg: ^2.0.10+1
+  device_info_plus: ^9.1.2
+  location: ^5.0.3
 
 dev_dependencies:
   flutter_test:
