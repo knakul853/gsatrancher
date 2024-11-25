@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'screens/home/home_screen.dart';
 import 'services/device_service.dart';
 import 'services/ble_service.dart';
+import 'services/permission_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,6 +18,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => DeviceService()),
         ChangeNotifierProvider(create: (_) => BleService()),
+        ChangeNotifierProvider(create: (_) => PermissionService()),
       ],
       child: MaterialApp(
         title: 'GSA Trancher',

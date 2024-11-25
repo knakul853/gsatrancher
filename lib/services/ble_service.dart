@@ -7,264 +7,229 @@ import 'package:gsatrancher/services/permission_service.dart';
 import '../constants/ble_uuids.dart';
 import '../models/device_advertising_data.dart';
 
+/// BleService: A service for managing Bluetooth Low Energy (BLE) functionality.
+///
+/// This service performs the following main functions:
+/// 1. Continuously scans for BLE devices.
+/// 2. Filters devices based on specific service UUIDs (Nordic UART and DFU).
+/// 3. Processes and stores scan results.
+/// 4. Manages device connections and updates.
 class BleService extends ChangeNotifier {
-  final List<ScanResult> _devices = [];
+  // Dependencies
+  final PermissionService _permissionService;
+  
+  // Scan state
+  final Map<String, ScanResult> _devices = {};
   bool _isScanning = false;
   StreamSubscription? _scanSubscription;
-  Timer? _updateTimer;
+  Timer? _scanTimer;
   bool _isEmulator = false;
-  final PermissionService _permissionService = PermissionService();
-  final List<ScanResult> _pendingUpdates = [];
-  bool _hasUpdates = false;
+  
+  // Bluetooth and Location state
+  bool _isBluetoothEnabled = false;
+  bool _isLocationEnabled = false;
+  
+  // Stream controllers
+  final _scanResultsController = StreamController<List<ScanResult>>.broadcast();
+  final _scanningStateController = StreamController<bool>.broadcast();
+  
+  // Public getters
+  Stream<List<ScanResult>> get scanResults => _scanResultsController.stream;
+  Stream<bool> get isScanning => _scanningStateController.stream;
+  bool get isBluetoothEnabled => _isBluetoothEnabled;
+  bool get isLocationEnabled => _isLocationEnabled;
 
-  BleService() {
+  BleService() : _permissionService = PermissionService() {
     _checkEmulator();
-    _startUpdateTimer();
+    _initializeStateMonitoring();
+    _startPeriodicCheck();
   }
 
-  void _startUpdateTimer() {
-    _updateTimer?.cancel();
-    _updateTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (_hasUpdates) {
-        _applyPendingUpdates();
-      }
+  void _initializeStateMonitoring() async {
+    // Monitor Bluetooth state
+    FlutterBluePlus.adapterState.listen((state) {
+      _isBluetoothEnabled = state == BluetoothAdapterState.on;
+      notifyListeners();
     });
+
+    // Check initial states
+    await _checkBluetoothState();
+    await _checkLocationState();
   }
 
-  void _applyPendingUpdates() {
-    if (_pendingUpdates.isEmpty) return;
-
-    for (var update in _pendingUpdates) {
-      final index = _devices.indexWhere(
-          (device) => device.device.remoteId == update.device.remoteId);
-      
-      if (index != -1) {
-        _devices[index] = update;
-      } else {
-        _devices.add(update);
-      }
-    }
-
-    _pendingUpdates.clear();
-    _hasUpdates = false;
-    notifyListeners();
-  }
-
-  void _checkEmulator() {
-    // Check if running on emulator
-    if (Platform.isAndroid) {
-      String androidModel =
-          const String.fromEnvironment('ANDROID_MODEL', defaultValue: '');
-      _isEmulator = androidModel.toLowerCase().contains('sdk') ||
-          androidModel.toLowerCase().contains('emulator');
-    } else if (Platform.isIOS) {
-      String iosModel = const String.fromEnvironment('SIMULATOR_DEVICE_NAME',
-          defaultValue: '');
-      _isEmulator = iosModel.isNotEmpty;
-    }
-  }
-
-  List<ScanResult> get devices => List.unmodifiable(_devices);
-  bool get isScanning => _isScanning;
-
-  Future<void> startScan(BuildContext context) async {
-    if (_isScanning) return;
-
-    // Clear previous results
-    _devices.clear();
-    _pendingUpdates.clear();
-    _hasUpdates = false;
-
+  Future<void> _checkBluetoothState() async {
     try {
-      // If running in emulator, simulate devices for testing
-      if (_isEmulator) {
-        _simulateDevices();
-        return;
-      }
-
-      // Check permissions first
-      bool permissionsGranted =
-          await _permissionService.checkAndRequestPermissions(context);
-
-      if (!permissionsGranted) {
-        debugPrint('BLE permissions not granted');
-        return;
-      }
-
-      // Check if Bluetooth is supported
-      if (await FlutterBluePlus.isSupported == false) {
-        debugPrint('Bluetooth not supported');
-        return;
-      }
-
-      // Create scan filters for Nordic UART and DFU services
-      List<Guid> serviceUuids = [
-        Guid(BleUUIDs.NORDIC_UART_SERVICE_UUID),
-        Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
-      ];
-
-      // Start scanning with filters
-      await FlutterBluePlus.startScan(
-        withServices: serviceUuids,
-      );
-
-      // Set up periodic scanning to simulate continuous updates
-      Timer.periodic(const Duration(seconds: 4), (timer) async {
-        if (!_isScanning) {
-          timer.cancel();
-          return;
-        }
-        
-        try {
-          await FlutterBluePlus.startScan(
-            withServices: serviceUuids,
-          );
-        } catch (e) {
-          debugPrint('Error during periodic scan: $e');
-        }
-      });
-
-      // Listen to scan results
-      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult r in results) {
-          _handleScanResult(r);
-        }
-      }, onError: (e) {
-        debugPrint('Error during BLE scan: $e');
-        stopScan();
-      });
-
-      _isScanning = true;
+      final state = await FlutterBluePlus.adapterState.first;
+      _isBluetoothEnabled = state == BluetoothAdapterState.on;
       notifyListeners();
     } catch (e) {
-      debugPrint('Error starting BLE scan: $e');
-      _isScanning = false;
-      notifyListeners();
+      debugPrint('Error checking Bluetooth state: $e');
     }
   }
 
-  void _simulateDevices() {
-    debugPrint('Running in emulator, simulating devices...');
-    _isScanning = true;
-    notifyListeners();
-
-    // Simulate finding devices over time
-    Timer(const Duration(seconds: 1), () {
-      _addSimulatedDevice('GSA Device 1', -65);
-    });
-
-    Timer(const Duration(seconds: 2), () {
-      _addSimulatedDevice('GSA Device 2', -72);
-      // Simulate update to first device
-      _addSimulatedDevice('GSA Device 1', -62);
-    });
-
-    Timer(const Duration(seconds: 3), () {
-      _addSimulatedDevice('GSA Device 3', -58);
-      // Simulate more updates
-      _addSimulatedDevice('GSA Device 1', -67);
-      _addSimulatedDevice('GSA Device 2', -75);
-      _isScanning = false;
+  Future<void> _checkLocationState() async {
+    try {
+      _isLocationEnabled = await _permissionService.checkLocationEnabled();
       notifyListeners();
+    } catch (e) {
+      debugPrint('Error checking location state: $e');
+    }
+  }
+
+  void _startPeriodicCheck() {
+    _scanTimer?.cancel();
+    _scanTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _performPeriodicCheck();
     });
   }
 
-  void _addSimulatedDevice(String name, int rssi) {
-    final deviceId = name.replaceAll(' ', '_').toLowerCase();
+  Future<void> _performPeriodicCheck() async {
+    try {
+      // Check Bluetooth state
+      await _checkBluetoothState();
+      
+      // Check Location state
+      await _checkLocationState();
+      
+      // Restart scan if needed
+      if (_isScanning && _isBluetoothEnabled && _isLocationEnabled) {
+        await _restartScan();
+      }
+    } catch (e) {
+      debugPrint('Error in periodic check: $e');
+    }
+  }
 
-    final advData = AdvertisementData(
-      advName: name,
-      txPowerLevel: -59,
-      connectable: true,
-      manufacturerData: {
-        1398: Uint8List.fromList([
-          0x01, // Version
-          0x64, // Battery level (100%)
-          0x00, // State
-          0x00, // Config version
-        ])
-      },
-      serviceData: {},
-      serviceUuids: [],
-      appearance: 0,
-    );
+  Future<void> startScan(BuildContext context) async {
+    try {
+      // Only start scanning if we're not already scanning
+      if (!_isScanning) {
+        debugPrint('🔍 Starting BLE scan...');
+        
+        // Clear existing devices
+        _devices.clear();
+        _scanResultsController.add([]);
 
-    final result = ScanResult(
-      device: BluetoothDevice.fromId(deviceId),
-      rssi: rssi,
-      timeStamp: DateTime.now(),
-      advertisementData: advData,
-    );
+        // Start scanning
+        _isScanning = true;
+        _scanningStateController.add(true);
+        
+        // Listen to scan results
+        _scanSubscription?.cancel();
+        _scanSubscription = FlutterBluePlus.scanResults.listen(
+          (results) {
+            debugPrint('📱 Found ${results.length} devices in scan');
+            for (final result in results) {
+              debugPrint('Device found: ${result.device.remoteId}, Name: ${result.device.localName}, RSSI: ${result.rssi}');
+              debugPrint('Services: ${result.advertisementData.serviceUuids}');
+              _handleScanResult(result);
+            }
+          },
+          onError: (error) {
+            debugPrint('❌ Error during scan: $error');
+            stopScan();
+          },
+        );
+        
+        // Start periodic scanning
+        _scanTimer?.cancel();
+        _scanTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+          if (_isScanning) {
+            debugPrint('🔄 Restarting periodic scan...');
+            await FlutterBluePlus.startScan(
+              timeout: const Duration(seconds: 4),
+              androidUsesFineLocation: true,
+              withServices: [
+                Guid(BleUUIDs.NORDIC_UART_SERVICE_UUID),
+                Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
+              ],
+            );
+          }
+        });
 
-    _handleScanResult(result);
+        // Trigger initial scan
+        debugPrint('🚀 Starting initial scan with service filters:');
+        debugPrint('UART Service: ${BleUUIDs.NORDIC_UART_SERVICE_UUID}');
+        debugPrint('DFU Service: ${BleUUIDs.DEFAULT_DFU_SERVICE_UUID}');
+        await FlutterBluePlus.startScan(
+          timeout: const Duration(seconds: 4),
+          androidUsesFineLocation: true,
+          withServices: [
+            Guid(BleUUIDs.NORDIC_UART_SERVICE_UUID),
+            Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
+          ],
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error starting scan: $e');
+      _isScanning = false;
+      _scanningStateController.add(false);
+    }
+  }
+
+  void _handleScanResult(ScanResult result) {
+    try {
+      // Store or update the device in our map
+      _devices[result.device.remoteId.toString()] = result;
+      
+      // Notify listeners with the updated list
+      final deviceList = _devices.values.toList();
+      debugPrint('📝 Updated device list, total devices: ${deviceList.length}');
+      _scanResultsController.add(deviceList);
+    } catch (e) {
+      debugPrint('❌ Error handling scan result: $e');
+    }
   }
 
   Future<void> stopScan() async {
-    if (!_isScanning) return;
+    _isScanning = false;
+    _scanningStateController.add(false);
+    _scanSubscription?.cancel();
+    _scanTimer?.cancel();
+    await FlutterBluePlus.stopScan();
+  }
 
+  Future<void> _restartScan() async {
     try {
-      debugPrint('Stopping BLE scan...');
-      if (!_isEmulator) {
-        await FlutterBluePlus.stopScan();
-      }
-      await _scanSubscription?.cancel();
-      _scanSubscription = null;
-      _isScanning = false;
-      
-      // Apply any remaining updates
-      _applyPendingUpdates();
-      
-      notifyListeners();
+      await FlutterBluePlus.stopScan();
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 4),
+        androidUsesFineLocation: true,
+        withServices: [
+          Guid(BleUUIDs.NORDIC_UART_SERVICE_UUID),
+          Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
+        ],
+      );
     } catch (e) {
-      debugPrint('Error stopping scan: $e');
+      debugPrint('Error restarting scan: $e');
     }
   }
 
-  Future<bool> isBluetoothOn() async {
-    if (_isEmulator) return true;
-
+  Future<void> connectToDevice(BluetoothDevice device, BuildContext context) async {
     try {
-      final state = await FlutterBluePlus.adapterState.first;
-      return state == BluetoothAdapterState.on;
+      await device.connect(
+        timeout: const Duration(seconds: 30),
+        autoConnect: false,
+      );
+      // TODO: Implement post-connection logic
     } catch (e) {
-      debugPrint('Error checking Bluetooth state: $e');
-      return false;
+      debugPrint('Error connecting to device: $e');
+      rethrow;
     }
   }
 
-  DeviceAdvertisingData? getParsedManufacturingData(ScanResult scanResult) {
-    final manufacturerData = scanResult.advertisementData.manufacturerData;
-    if (manufacturerData.isEmpty) return null;
-
-    // Check for manufacturer ID 0x576 (1398 in decimal)
-    final data = manufacturerData[1398];
-    if (data == null) return null;
-
-    return DeviceAdvertisingData.fromManufacturerData(data);
-  }
-
-  void _handleScanResult(ScanResult r) {
-    // Parse manufacturing data
-    final manufacturingData = getParsedManufacturingData(r);
-    if (manufacturingData == null) return;
-
-    // Add to pending updates
-    final existingUpdateIndex = _pendingUpdates
-        .indexWhere((update) => update.device.remoteId == r.device.remoteId);
-    
-    if (existingUpdateIndex != -1) {
-      _pendingUpdates[existingUpdateIndex] = r;
-    } else {
-      _pendingUpdates.add(r);
+  Future<void> _checkEmulator() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      _isEmulator = await _permissionService.isEmulator();
     }
-    
-    _hasUpdates = true;
   }
 
   @override
   void dispose() {
-    stopScan();
-    _updateTimer?.cancel();
+    _scanSubscription?.cancel();
+    _scanTimer?.cancel();
+    _scanResultsController.close();
+    _scanningStateController.close();
     super.dispose();
   }
 }

@@ -2,16 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:location/location.dart' as location;
 
 class PermissionService extends ChangeNotifier {
+  final location.Location _location = location.Location();
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
   Future<bool> checkAndRequestPermissions(BuildContext context) async {
     try {
       // First check if Bluetooth is turned on
       if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
-        // Show dialog to enable Bluetooth
-        bool shouldContinue = await _showBluetoothDialog(context);
-        if (!shouldContinue) return false;
-        
         // Wait for Bluetooth to be turned on
         await FlutterBluePlus.turnOn();
       }
@@ -32,17 +33,28 @@ class PermissionService extends ChangeNotifier {
         ];
       }
 
-      // Request each permission individually
+      // Check which permissions are not granted
+      List<Permission> notGrantedPermissions = [];
       for (Permission permission in permissions) {
         PermissionStatus status = await permission.status;
+        if (!status.isGranted) {
+          notGrantedPermissions.add(permission);
+        }
+      }
+
+      // Only request permissions that are not granted
+      if (notGrantedPermissions.isNotEmpty) {
+        // Show permission dialog for all needed permissions at once
+        bool shouldContinue = await _showPermissionDialog(context, notGrantedPermissions);
+        if (!shouldContinue) return false;
+
+        // Request all needed permissions
+        Map<Permission, PermissionStatus> statuses = await notGrantedPermissions.request();
         
-        if (status.isDenied) {
-          status = await permission.request();
-          if (!status.isGranted) {
-            // Show permission dialog for this specific permission
-            bool shouldContinue = await _showPermissionDialog(context, [permission]);
-            if (!shouldContinue) return false;
-          }
+        // Check if all permissions were granted
+        bool allGranted = statuses.values.every((status) => status.isGranted);
+        if (!allGranted) {
+          return false;
         }
       }
 
@@ -51,6 +63,42 @@ class PermissionService extends ChangeNotifier {
       debugPrint('Error checking permissions: $e');
       return false;
     }
+  }
+
+  Future<bool> checkLocationEnabled() async {
+    try {
+      bool serviceEnabled = await _location.serviceEnabled();
+      if (!serviceEnabled) {
+        serviceEnabled = await _location.requestService();
+        if (!serviceEnabled) {
+          return false;
+        }
+      }
+
+      location.PermissionStatus permissionGranted = await _location.hasPermission();
+      if (permissionGranted == location.PermissionStatus.denied) {
+        permissionGranted = await _location.requestPermission();
+        if (permissionGranted != location.PermissionStatus.granted) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error checking location status: $e');
+      return false;
+    }
+  }
+
+  Future<bool> isEmulator() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await _deviceInfo.androidInfo;
+      return androidInfo.isPhysicalDevice == false;
+    } else if (Platform.isIOS) {
+      final iosInfo = await _deviceInfo.iosInfo;
+      return !iosInfo.isPhysicalDevice;
+    }
+    return false;
   }
 
   Future<bool> _showBluetoothDialog(BuildContext context) async {
@@ -99,18 +147,15 @@ class PermissionService extends ChangeNotifier {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Column(
           children: [
-            Icon(
-              Icons.bluetooth_searching,
+            const Icon(
+              Icons.security,
               size: 48,
-              color: Theme.of(context).primaryColor,
+              color: Colors.blue,
             ),
             const SizedBox(height: 16),
             const Text(
-              'Permission Required',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              'Permissions Required',
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -119,16 +164,15 @@ class PermissionService extends ChangeNotifier {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'To scan for nearby devices, we need:',
+              'This app needs the following permissions to scan for and connect to devices:',
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
             ...deniedPermissions.map((permission) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_outline,
-                      color: Theme.of(context).primaryColor),
+                  const Icon(Icons.check_circle_outline, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     _getPermissionText(permission),
@@ -137,35 +181,15 @@ class PermissionService extends ChangeNotifier {
                 ],
               ),
             )),
-            const SizedBox(height: 16),
-            const Text(
-              'These permissions are essential for the app to function properly.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Not Now',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              await openAppSettings();
-              Navigator.of(context).pop(true);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+            onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Open Settings'),
           ),
         ],
