@@ -8,7 +8,7 @@ import '../../widgets/device_list_item.dart';
 import '../../models/device_advertising_data.dart';
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({Key? key}) : super(key: key);
+  const ScanScreen({super.key});
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -50,8 +50,8 @@ class _ScanScreenState extends State<ScanScreen> {
             appBar: AppBar(
               backgroundColor: AppColors.primary600,
               leading: IconButton(
-                icon:
-                    Icon(Icons.arrow_back, color: AppColors.lightHighEmphasis),
+                icon: const Icon(Icons.arrow_back,
+                    color: AppColors.lightHighEmphasis),
                 onPressed: () async {
                   await bleService.stopScan();
                   if (mounted) {
@@ -60,12 +60,12 @@ class _ScanScreenState extends State<ScanScreen> {
                 },
               ),
               title: const Text(''),
-              actions: [
+              actions: const [
                 StatusIndicators(
                   isBluetoothEnabled: true, // TODO: Get actual state
                   isLocationEnabled: true, // TODO: Get actual state
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
               ],
             ),
             body: Column(
@@ -110,8 +110,8 @@ class _ScanScreenState extends State<ScanScreen> {
                   color: AppColors.primary600,
                 ),
                 // Devices Header
-                Padding(
-                  padding: const EdgeInsets.all(16),
+                const Padding(
+                  padding: EdgeInsets.all(16),
                   child: Text(
                     'My Devices',
                     style: TextStyle(
@@ -123,7 +123,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 // Device List or Loading Message
                 Expanded(
-                  child: _buildDeviceList(bleService.devices, bleService.isScanning),
+                  child: _buildDeviceList(
+                      bleService.devices, bleService.isScanning),
                 ),
               ],
             ),
@@ -155,7 +156,7 @@ class _ScanScreenState extends State<ScanScreen> {
               const SizedBox(height: 8),
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppColors.secondary700,
                   fontWeight: FontWeight.w500,
                 ),
@@ -208,8 +209,9 @@ class _ScanScreenState extends State<ScanScreen> {
             : scanResult.device.remoteId.toString();
 
         // Get manufacturing data if available
-        final manufacturingData = Provider.of<BleService>(context, listen: false)
-            .getParsedManufacturingData(scanResult);
+        final manufacturingData =
+            Provider.of<BleService>(context, listen: false)
+                .getParsedManufacturingData(scanResult);
 
         // Convert RSSI to signal strength percentage
         final signalStrength = _calculateSignalStrength(scanResult.rssi);

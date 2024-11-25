@@ -8,12 +8,12 @@ class ActionCard extends StatelessWidget {
   final bool isEnabled;
 
   const ActionCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.icon,
     required this.onTap,
     this.isEnabled = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +35,9 @@ class ActionCard extends StatelessWidget {
                 Icon(
                   icon,
                   size: 48,
-                  color: isEnabled ? AppColors.primary500 : AppColors.lightBackdropMid,
+                  color: isEnabled
+                      ? AppColors.primary500
+                      : AppColors.lightBackdropMid,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -43,7 +45,9 @@ class ActionCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
-                    color: isEnabled ? AppColors.secondary700 : AppColors.lightBackdropMid,
+                    color: isEnabled
+                        ? AppColors.secondary700
+                        : AppColors.lightBackdropMid,
                     fontWeight: FontWeight.w500,
                   ),
                 ),

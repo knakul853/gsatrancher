@@ -13,7 +13,7 @@ class DeviceListItem extends StatelessWidget {
   final VoidCallback? onTap;
 
   const DeviceListItem({
-    Key? key,
+    super.key,
     required this.deviceName,
     required this.version,
     this.hasUpdate = false,
@@ -22,7 +22,7 @@ class DeviceListItem extends StatelessWidget {
     this.isSelected = false,
     this.onSelectionChanged,
     this.onTap,
-  }) : super(key: key);
+  });
 
   String _getSignalStrengthText(int strength) {
     if (strength >= 75) return 'STRONG';
@@ -93,7 +93,8 @@ class DeviceListItem extends StatelessWidget {
                               if (hasUpdate)
                                 Container(
                                   margin: const EdgeInsets.only(left: 5),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
                                   decoration: BoxDecoration(
                                     color: AppColors.primary500,
                                     borderRadius: BorderRadius.circular(10),

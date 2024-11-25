@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../scan/scan_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +55,7 @@ class HomeScreen extends StatelessWidget {
       color: isConnected ? AppColors.lightPositive : AppColors.lightNegative,
       child: Text(
         isConnected ? 'Device Connected' : 'Device Disconnected',
-        style: TextStyle(
+        style: const TextStyle(
           color: AppColors.lightHighEmphasis,
           fontSize: 16,
           fontWeight: FontWeight.bold,

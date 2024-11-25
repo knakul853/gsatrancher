@@ -14,7 +14,7 @@ class Version {
   factory Version.fromString(String version) {
     final parts = version.split('.');
     return Version(
-      major: parts.length > 0 ? int.tryParse(parts[0]) ?? 0 : 0,
+      major: parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0,
       minor: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
       patch: parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0,
     );
@@ -62,7 +62,7 @@ class DeviceAdvertisingData {
       stateOfCharge = data[5];
       final configVersion1 = data[6];
       final configVersion2 = data[7];
-      configVersion = int.parse('${configVersion1}${configVersion2}', radix: 16);
+      configVersion = int.parse('$configVersion1$configVersion2', radix: 16);
     }
 
     return DeviceAdvertisingData(

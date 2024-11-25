@@ -8,12 +8,12 @@ class DeviceCard extends StatelessWidget {
   final bool isEnabled;
 
   const DeviceCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.icon,
     required this.onTap,
     this.isEnabled = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

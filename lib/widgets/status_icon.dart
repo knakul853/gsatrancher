@@ -6,10 +6,10 @@ class StatusIcon extends StatelessWidget {
   final double size;
 
   const StatusIcon({
-    Key? key,
+    super.key,
     required this.icon,
     this.size = 24,
-  }) : super(key: key);
+  });
 
   static Widget battery(int level, {double size = 24}) {
     IconData icon;

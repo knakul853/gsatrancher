@@ -6,10 +6,10 @@ class StatusIndicators extends StatelessWidget {
   final bool isLocationEnabled;
 
   const StatusIndicators({
-    Key? key,
+    super.key,
     required this.isBluetoothEnabled,
     required this.isLocationEnabled,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +36,7 @@ class StatusIndicators extends StatelessWidget {
       message: tooltip,
       child: Icon(
         icon,
-        color: AppColors.lightHighEmphasis,  // Always white (#FFFFFF)
+        color: AppColors.lightHighEmphasis, // Always white (#FFFFFF)
         size: 24,
       ),
     );
