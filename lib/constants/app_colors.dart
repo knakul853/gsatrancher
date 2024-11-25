@@ -18,4 +18,9 @@ class AppColors {
   static const Color lightNegative = Color(0xFFB00020);  // Error/Disconnected state
   static const Color lightHighEmphasis = Color(0xFFFFFFFF);  // Icon colors
   static const Color lightDisabled = Color(0x61FFFFFF);  // Icon background when disabled
+  
+  // Text Colors
+  static const Color lightMidGray = Color(0xFF757575);  // Secondary text color
+  static const Color lightDivider = Color(0xFFDDDDDD);  // Divider lines
+  static const Color textSecondary = Color(0xFF424242);  // Primary text color
 }
