@@ -315,9 +315,11 @@ class _ScanScreenState extends State<ScanScreen> {
                         StreamBuilder<List<ScanResult>>(
                           stream: bleService.scanResults,
                           builder: (context, snapshot) {
+                            debugPrint('StreamBuilder snapshot: ${snapshot.hasData}');
                             if (snapshot.hasData) {
                               final devices = snapshot.data!;
                               return ListView.builder(
+                                key: const ValueKey('deviceList'), // Added key for rebuild
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 padding: const EdgeInsets.symmetric(

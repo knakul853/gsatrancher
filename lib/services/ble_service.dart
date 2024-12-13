@@ -17,22 +17,24 @@ import '../models/device_advertising_data.dart';
 class BleService extends ChangeNotifier {
   // Dependencies
   final PermissionService _permissionService;
-  
+
   // Scan state
   final Map<String, ScanResult> _devices = {};
   bool _isScanning = false;
   StreamSubscription? _scanSubscription;
-  Timer? _scanTimer;
+  Timer? _scanTimer; // Timer for periodic updates
+  Timer? _uiUpdateTimer; // Timer for UI updates
+  Timer? _deviceRemovalTimer; // Timer for removing disconnected devices
   bool _isEmulator = false;
-  
+
   // Bluetooth and Location state
   bool _isBluetoothEnabled = false;
   bool _isLocationEnabled = false;
-  
+
   // Stream controllers
   final _scanResultsController = StreamController<List<ScanResult>>.broadcast();
   final _scanningStateController = StreamController<bool>.broadcast();
-  
+
   // Public getters
   Stream<List<ScanResult>> get scanResults => _scanResultsController.stream;
   Stream<bool> get isScanning => _scanningStateController.stream;
@@ -87,10 +89,10 @@ class BleService extends ChangeNotifier {
     try {
       // Check Bluetooth state
       await _checkBluetoothState();
-      
+
       // Check Location state
       await _checkLocationState();
-      
+
       // Restart scan if needed
       if (_isScanning && _isBluetoothEnabled && _isLocationEnabled) {
         await _restartScan();
@@ -105,7 +107,7 @@ class BleService extends ChangeNotifier {
       // Only start scanning if we're not already scanning
       if (!_isScanning) {
         debugPrint('🔍 Starting BLE scan...');
-        
+
         // Clear existing devices
         _devices.clear();
         _scanResultsController.add([]);
@@ -113,7 +115,7 @@ class BleService extends ChangeNotifier {
         // Start scanning
         _isScanning = true;
         _scanningStateController.add(true);
-        
+
         // Listen to scan results
         _scanSubscription?.cancel();
         _scanSubscription = FlutterBluePlus.scanResults.listen(
@@ -130,7 +132,7 @@ class BleService extends ChangeNotifier {
             stopScan();
           },
         );
-        
+
         // Start periodic scanning
         _scanTimer?.cancel();
         _scanTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
@@ -159,6 +161,9 @@ class BleService extends ChangeNotifier {
             Guid(BleUUIDs.DEFAULT_DFU_SERVICE_UUID),
           ],
         );
+        // Start UI update timer
+        _startUIUpdateTimer();
+        _startDeviceRemovalTimer(); // Start device removal timer
       }
     } catch (e) {
       debugPrint('❌ Error starting scan: $e');
@@ -171,7 +176,7 @@ class BleService extends ChangeNotifier {
     try {
       // Store or update the device in our map
       _devices[result.device.remoteId.toString()] = result;
-      
+
       // Notify listeners with the updated list
       final deviceList = _devices.values.toList();
       debugPrint('📝 Updated device list, total devices: ${deviceList.length}');
@@ -186,6 +191,8 @@ class BleService extends ChangeNotifier {
     _scanningStateController.add(false);
     _scanSubscription?.cancel();
     _scanTimer?.cancel();
+    _uiUpdateTimer?.cancel(); // Cancel UI update timer
+    _deviceRemovalTimer?.cancel(); // Cancel device removal timer
     await FlutterBluePlus.stopScan();
   }
 
@@ -224,10 +231,42 @@ class BleService extends ChangeNotifier {
     }
   }
 
+  void _startUIUpdateTimer() {
+    // Start a timer to emit UI updates every 5 seconds
+    _uiUpdateTimer?.cancel();
+    _uiUpdateTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      debugPrint('⏰ Triggering UI update...');
+      notifyListeners(); // Notify listeners to rebuild UI
+    });
+  }
+
+  void _startDeviceRemovalTimer() {
+    _deviceRemovalTimer?.cancel();
+    _deviceRemovalTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _removeDisconnectedDevices();
+    });
+  }
+
+  void _removeDisconnectedDevices() {
+    // Create a copy to avoid ConcurrentModificationException
+    final devicesToRemove = _devices.keys.toList();
+    for (final deviceId in devicesToRemove) {
+      if (!_devices.containsKey(deviceId)) continue;
+      final result = _devices[deviceId]!;
+      if (result.rssi == 0) { // Assuming RSSI of 0 means disconnected
+        _devices.remove(deviceId);
+        debugPrint('Removed device: $deviceId');
+        _scanResultsController.add(_devices.values.toList());
+      }
+    }
+  }
+
   @override
   void dispose() {
     _scanSubscription?.cancel();
     _scanTimer?.cancel();
+    _uiUpdateTimer?.cancel(); // Cancel UI update timer
+    _deviceRemovalTimer?.cancel(); // Cancel device removal timer
     _scanResultsController.close();
     _scanningStateController.close();
     super.dispose();
