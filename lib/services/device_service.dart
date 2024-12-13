@@ -12,14 +12,27 @@ class DeviceService extends ChangeNotifier {
   bool get isLocationEnabled => _isLocationEnabled;
   Device? get currentDevice => _currentDevice;
 
-  Future<void> connectToDevice(String deviceId) async {
-    // Implement device connection logic
+  void setConnectedDevice(Device device) {
+    _currentDevice = device;
+    _isConnected = true;
+    notifyListeners();
+  }
+
+  Future<void> connectToDevice(String deviceId, String name, String version) async {
+    _currentDevice = Device(
+      id: deviceId,
+      name: name,
+      isConnected: true,
+      status: 'Connected',
+      firmwareVersion: version,
+      batteryLevel: 75, // TODO: Get actual battery level
+      signalStrength: 'STRONG', // TODO: Calculate from RSSI
+    );
     _isConnected = true;
     notifyListeners();
   }
 
   Future<void> disconnectDevice() async {
-    // Implement device disconnection logic
     _isConnected = false;
     _currentDevice = null;
     notifyListeners();

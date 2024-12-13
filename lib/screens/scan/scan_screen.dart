@@ -10,6 +10,7 @@ import '../../services/ble_service.dart';
 import '../../widgets/device_list_item.dart';
 import '../../models/device_advertising_data.dart';
 import '../../services/permission_service.dart';
+import '../../services/device_service.dart'; // Added import for DeviceService
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -413,7 +414,18 @@ class _ScanScreenState extends State<ScanScreen> {
     if (mounted) {
       Navigator.of(context).pop(); // Dismiss the dialog
       
-      if (!success) {
+      if (success) {
+        // Update device service with connected device
+        final deviceService = context.read<DeviceService>();
+        await deviceService.connectToDevice(
+          device.remoteId.toString(),
+          device.localName ?? 'Unknown Device',
+          'v2.2.3', // TODO: Get actual version from device
+        );
+        
+        // Navigate back to home screen
+        Navigator.of(context).pop();
+      } else {
         // Restart scanning if connection failed
         _bleService.startScan(context);
       }
