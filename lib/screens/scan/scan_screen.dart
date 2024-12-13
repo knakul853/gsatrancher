@@ -10,6 +10,7 @@ import '../../services/ble_service.dart';
 import '../../widgets/device_list_item.dart';
 import '../../models/device_advertising_data.dart';
 import '../../services/permission_service.dart';
+import '../../services/device_service.dart'; // Added import for DeviceService
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -24,6 +25,7 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _hasCheckedPermissions = false;
   int selectedDevicesCount = 0;
   final _location = loc.Location();
+  String _connectionStatus = '';
 
   @override
   void initState() {
@@ -31,6 +33,23 @@ class _ScanScreenState extends State<ScanScreen> {
     debugPrint('🚀 Initializing ScanScreen...');
     _bleService = context.read<BleService>();
     _permissionService = context.read<PermissionService>();
+
+    // Listen to connection state changes
+    _bleService.connectionState.listen((status) {
+      setState(() => _connectionStatus = status);
+      if (status == 'Connected') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Device connected successfully!')),
+        );
+      } else if (status == 'Connection failed' || status == 'Connection timeout') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to connect to device'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
@@ -312,61 +331,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         ),
 
                         // Device List
-                        StreamBuilder<List<ScanResult>>(
-                          stream: bleService.scanResults,
-                          builder: (context, snapshot) {
-                            debugPrint('StreamBuilder snapshot: ${snapshot.hasData}');
-                            if (snapshot.hasData) {
-                              final devices = snapshot.data!;
-                              return ListView.builder(
-                                key: const ValueKey('deviceList'), // Added key for rebuild
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 25,
-                                  vertical: 10,
-                                ),
-                                itemCount: devices.length,
-                                itemBuilder: (context, index) {
-                                  final scanResult = devices[index];
-                                  final device = scanResult.device;
-                                  final advertisingData =
-                                      DeviceAdvertisingData.fromScanResult(
-                                          scanResult);
-                                  // Convert RSSI (-100 to -30 dBm) to percentage (0-100%)
-                                  final signalStrength =
-                                      ((scanResult.rssi + 100) ~/ 1.25)
-                                          .clamp(0, 100);
-
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: DeviceListItem(
-                                      deviceName: advertisingData.deviceName,
-                                      version: advertisingData
-                                              .version?.formattedVersion ??
-                                          'Unknown',
-                                      batteryLevel:
-                                          advertisingData.stateOfCharge ?? 0,
-                                      signalStrength: signalStrength,
-                                      hasUpdate:
-                                          false, // TODO: Implement update check
-                                      onTap: () async {
-                                        await bleService.stopScan();
-                                        await bleService.connectToDevice(
-                                          device,
-                                          context,
-                                        );
-                                      },
-                                    ),
-                                  );
-                                },
-                              );
-                            }
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          },
-                        ),
+                        _buildDeviceList(),
                       ],
                     ),
                   ),
@@ -377,6 +342,94 @@ class _ScanScreenState extends State<ScanScreen> {
         );
       },
     );
+  }
+
+  Widget _buildDeviceList() {
+    return StreamBuilder<List<ScanResult>>(
+      stream: _bleService.scanResults,
+      builder: (context, snapshot) {
+        debugPrint('StreamBuilder snapshot: ${snapshot.hasData}');
+        if (snapshot.hasData) {
+          final devices = snapshot.data!;
+          return ListView.builder(
+            key: const ValueKey('deviceList'), // Added key for rebuild
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 25,
+              vertical: 10,
+            ),
+            itemCount: devices.length,
+            itemBuilder: (context, index) {
+              final scanResult = devices[index];
+              final device = scanResult.device;
+              final advertisingData = DeviceAdvertisingData.fromScanResult(scanResult);
+              // Convert RSSI (-100 to -30 dBm) to percentage (0-100%)
+              final signalStrength = ((scanResult.rssi + 100) ~/ 1.25).clamp(0, 100);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: DeviceListItem(
+                  deviceName: advertisingData.deviceName,
+                  version: advertisingData.version?.formattedVersion ?? 'Unknown',
+                  batteryLevel: advertisingData.stateOfCharge ?? 0,
+                  signalStrength: signalStrength,
+                  hasUpdate: false, // TODO: Implement update check
+                  onTap: () => _connectToDevice(device),
+                ),
+              );
+            },
+          );
+        }
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      },
+    );
+  }
+
+  Future<void> _connectToDevice(BluetoothDevice device) async {
+    // Show connecting dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Connecting to ${device.localName}...'),
+          ],
+        ),
+      ),
+    );
+
+    // Stop scanning before connecting
+    await _bleService.stopScan();
+    
+    // Attempt connection
+    final success = await _bleService.connectToDevice(device, context);
+    
+    if (mounted) {
+      Navigator.of(context).pop(); // Dismiss the dialog
+      
+      if (success) {
+        // Update device service with connected device
+        final deviceService = context.read<DeviceService>();
+        await deviceService.connectToDevice(
+          device.remoteId.toString(),
+          device.localName ?? 'Unknown Device',
+          'v2.2.3', // TODO: Get actual version from device
+        );
+        
+        // Navigate back to home screen
+        Navigator.of(context).pop();
+      } else {
+        // Restart scanning if connection failed
+        _bleService.startScan(context);
+      }
+    }
   }
 
   Widget _buildActionButton({
