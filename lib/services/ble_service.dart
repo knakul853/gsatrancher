@@ -35,13 +35,22 @@ class BleService extends ChangeNotifier {
   final _scanResultsController = StreamController<List<ScanResult>>.broadcast();
   final _scanningStateController = StreamController<bool>.broadcast();
 
+  // Device timeout duration
+  static const deviceTimeoutDuration = Duration(seconds: 7);
+  
+  // Device state tracking
+  final Map<String, DateTime> _lastSeenDevices = {};
+  StreamController<String>? _connectionStateController;
+
   // Public getters
   Stream<List<ScanResult>> get scanResults => _scanResultsController.stream;
   Stream<bool> get isScanning => _scanningStateController.stream;
   bool get isBluetoothEnabled => _isBluetoothEnabled;
   bool get isLocationEnabled => _isLocationEnabled;
+  Stream<String> get connectionState => _connectionStateController!.stream;
 
   BleService() : _permissionService = PermissionService() {
+    _connectionStateController = StreamController<String>.broadcast();
     _checkEmulator();
     _initializeStateMonitoring();
     _startPeriodicCheck();
@@ -174,16 +183,40 @@ class BleService extends ChangeNotifier {
 
   void _handleScanResult(ScanResult result) {
     try {
+      final deviceId = result.device.remoteId.toString();
+      
+      // Update last seen time for the device
+      _lastSeenDevices[deviceId] = DateTime.now();
+      
       // Store or update the device in our map
-      _devices[result.device.remoteId.toString()] = result;
+      _devices[deviceId] = result;
 
       // Notify listeners with the updated list
-      final deviceList = _devices.values.toList();
-      debugPrint('📝 Updated device list, total devices: ${deviceList.length}');
-      _scanResultsController.add(deviceList);
+      _updateDeviceList();
+      
+      debugPrint('📱 Updated device: ${result.device.localName} (${result.rssi} dBm)');
     } catch (e) {
       debugPrint('❌ Error handling scan result: $e');
     }
+  }
+
+  void _updateDeviceList() {
+    final now = DateTime.now();
+    
+    // Remove timed out devices
+    _lastSeenDevices.removeWhere((deviceId, lastSeen) {
+      final hasTimedOut = now.difference(lastSeen) > deviceTimeoutDuration;
+      if (hasTimedOut) {
+        _devices.remove(deviceId);
+        debugPrint('🗑️ Removed timed out device: $deviceId');
+      }
+      return hasTimedOut;
+    });
+
+    // Notify listeners with the updated list
+    final deviceList = _devices.values.toList();
+    debugPrint('📝 Device list updated, active devices: ${deviceList.length}');
+    _scanResultsController.add(deviceList);
   }
 
   Future<void> stopScan() async {
@@ -212,20 +245,49 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  Future<void> connectToDevice(BluetoothDevice device, BuildContext context) async {
+  Future<bool> connectToDevice(BluetoothDevice device, BuildContext context) async {
     try {
+      _connectionStateController?.add('Connecting to ${device.localName}...');
+      debugPrint('🔌 Attempting to connect to device: ${device.localName}');
+
+      // Set up connection timeout
+      bool hasConnected = false;
+      Timer? timeoutTimer;
+      
+      timeoutTimer = Timer(const Duration(seconds: 10), () {
+        if (!hasConnected) {
+          debugPrint('⏰ Connection timeout for device: ${device.localName}');
+          _connectionStateController?.add('Connection timeout');
+          device.disconnect();
+        }
+      });
+
+      // Attempt connection
       await device.connect(
-        timeout: const Duration(seconds: 30),
+        timeout: const Duration(seconds: 10),
         autoConnect: false,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Connection attempt timed out');
+        },
       );
-      // TODO: Implement post-connection logic
+
+      hasConnected = true;
+      timeoutTimer.cancel();
+      
+      debugPrint('✅ Successfully connected to: ${device.localName}');
+      _connectionStateController?.add('Connected');
+      return true;
+
     } catch (e) {
-      debugPrint('Error connecting to device: $e');
-      rethrow;
+      debugPrint('❌ Connection error: $e');
+      _connectionStateController?.add('Connection failed');
+      return false;
     }
   }
 
-  Future<void> _checkEmulator() async {
+  void _checkEmulator() async {
     if (!kIsWeb && Platform.isAndroid) {
       _isEmulator = await _permissionService.isEmulator();
     }
@@ -265,10 +327,11 @@ class BleService extends ChangeNotifier {
   void dispose() {
     _scanSubscription?.cancel();
     _scanTimer?.cancel();
-    _uiUpdateTimer?.cancel(); // Cancel UI update timer
-    _deviceRemovalTimer?.cancel(); // Cancel device removal timer
+    _uiUpdateTimer?.cancel();
+    _deviceRemovalTimer?.cancel();
     _scanResultsController.close();
     _scanningStateController.close();
+    _connectionStateController?.close();
     super.dispose();
   }
 }
